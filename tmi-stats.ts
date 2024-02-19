@@ -8,14 +8,14 @@ async function main() {
 }
 
 async function parse_args(args: string[]) {
-    let cmd = new Command()
+    const cmd = new Command()
         .name("tmi-stats")
         .description("Collects statistics from your T-Mobile Home Internet Gateway")
         .globalOption("--host <host:string>", "Where to connect to the gateway", {
             default: tmo.DEFAULT_CONFIG.host
         })
         .default("help")
-        
+
     cmd.command("help")
         .description("Show help")
         .action(() => {
@@ -26,7 +26,7 @@ async function parse_args(args: string[]) {
         .description("Just get and show the stats once")
         .action(get_once)
 
-    cmd.parse(args)
+    await cmd.parse(args)
 }
 
 type GlobalOptions = {
@@ -36,8 +36,11 @@ type GlobalOptions = {
 async function get_once(opts: GlobalOptions) {
     const client = new tmo.Client(opts)
 
-    const json = await client.getJSON()
+    const json = await client.getRawJSON()
     console.log(json)
+
+    // Just double check that the JSON parses and give errors if it didn't:
+    tmo.Stats.parse(json)
 }
 
 
