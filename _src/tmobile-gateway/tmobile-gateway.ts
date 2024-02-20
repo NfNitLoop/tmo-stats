@@ -75,6 +75,8 @@ export const SignalInfo = z.object({
 
 })
 
+export type SignalInfo = z.infer<typeof SignalInfo>
+
 export const SignalMap = z.object({
     "4g": SignalInfo.optional(),
     "5g": SignalInfo.optional(),
