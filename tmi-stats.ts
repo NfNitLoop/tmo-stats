@@ -73,27 +73,78 @@ function show(data: tmo.Stats) {
             row.band,
             `bars: ${row.bars}`,
             color("sinr", row.sinr),
-            `rsrp: ${row.rsrp}`,
-            `rsrq: ${row.rsrq}`,
-            `rssi: ${row.rssi}`,
+            color("rsrq", row.rsrq),
+            color("rsrp", row.rsrp),
+            color("rssi", row.rssi),
         ])
     }
     table.render()
 }
 
+const bg = {
+    green: colors.black.bgGreen,
+    lightGreen: colors.black.bgBrightGreen,
+    yellow: colors.black.bgYellow,
+    orange: (text: string) => colors.black.bgRgb24(text, 0xfc9803),
+    red: colors.black.bgRed
+}
+
+// Colors according to: https://www.rangeful.com/what-is-rssi-sinr-rsrp-rsrq-how-does-this-affect-signal-quality/
 function color(name: "sinr"|"rsrp"|"rsrq"|"rssi", value: number): string {
     const text = `${name}: ${value}`
     if (name == "sinr") {
         if (value >= 20) {
-            return colors.black.bgGreen(text)
+            return bg.green(text)
         }
         if (value >= 13) {
-            return colors.black.bgYellow(text)
+            return bg.yellow(text)
         }
         if (value >= 0) {
-            return colors.black.bgRgb24(text, 0xfc9803)
+            return bg.orange(text)
         }
-        return colors.black.bgRed(text)
+        return bg.red(text)
+    }
+
+    if (name == "rsrp") {
+        if (value >= -80) {
+            return bg.green(text)
+        }
+        if (value >= -90) {
+            return bg.yellow(text)
+        }
+        if (value >= -100) {
+            return bg.orange(text)
+        }
+        return bg.red(text)
+    }
+
+    if (name == "rsrq") {
+        if (value >= -10) {
+            return bg.green(text)
+        }
+        if (value >= -15) {
+            return bg.yellow(text)
+        }
+        if (value >= -20) {
+            return bg.orange(text)
+        }
+        return bg.red(text)
+    }
+
+    if (name == "rssi") {
+        if (value >= -65) {
+            return bg.green(text)
+        }
+        if (value >= -75) {
+            return bg.lightGreen(text)
+        }
+        if (value >= -85) {
+            return bg.yellow(text)
+        }
+        if (value >= -95) {
+            return bg.orange(text)
+        }
+        return bg.red(text)
     }
 
     return text
