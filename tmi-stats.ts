@@ -1,6 +1,7 @@
 #!/usr/bin/env -S deno run --allow-net 
 
 import * as tmo from "./_src/tmobile-gateway/tmobile-gateway.ts"
+import { DB } from "./_src/db.ts"
 import { Command } from "./deps/cliffy/command.ts"
 import { delay } from "./deps/std/async.ts"
 import { Table } from "./deps/cliffy/table.ts"
@@ -17,6 +18,9 @@ async function parse_args(args: string[]) {
         .globalOption("--host <host:string>", "Where to connect to the gateway", {
             default: tmo.DEFAULT_CONFIG.host
         })
+        .globalOption("--db <file:string>", "Where should we save statistics?", {
+            default: ".tmi-stats.sqlite3"
+        })
         .default("help")
 
     cmd.command("help")
@@ -30,13 +34,33 @@ async function parse_args(args: string[]) {
         .action(get_once)
 
     cmd.command("watch")
+        .description("Watch the router stats and record them to a database.")
         .action(watch)
+
+    // const db_cmd = cmd.command("db")
+    //     .action(() => db_cmd.showHelp())
+
+    // db_cmd.command("db check")
+    //     .action(db_check)
+
+    const db = new Command<GlobalOptions>()
+        .name("db")
+        .description("Subcommands for working with the database")
+        .action(() => db.showHelp())
+
+    db.command("check", new Command<GlobalOptions>()
+        .description("Check the validity of the database.")
+        .action(db_check)
+    )
+
+    cmd.command(db.getName(), db)
 
     await cmd.parse(args)
 }
 
 type GlobalOptions = {
     host: string
+    db: string
 }
 
 async function get_once(opts: GlobalOptions) {
@@ -51,11 +75,12 @@ async function get_once(opts: GlobalOptions) {
 
 async function watch(opts: GlobalOptions) {
     const client = new tmo.Client(opts)
+    using db = DB.openOrCreate(opts.db)
     while (true) {
         try {
-            console.log("")
             console.log(new Date())
             const data = await client.getData()
+            db.saveSignal(data.signal)
             show(data)
         } catch (e: unknown) {
             console.error(e)
@@ -182,6 +207,12 @@ function rows(data: tmo.Stats): Row[] {
     if (g5) { addRow(g5, "5g") }
 
     return rows
+}
+
+function db_check(opts: GlobalOptions) {
+    const db = DB.openOrCreate(opts.db)
+    db.check()
+    console.log("👍 OK")
 }
 
 

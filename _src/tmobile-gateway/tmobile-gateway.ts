@@ -83,6 +83,8 @@ export const SignalMap = z.object({
     // There's a "generic" section here, but I don't care about it.
 })
 
+export type SignalMap = z.infer<typeof SignalMap>
+
 
 export const Stats = z.object({
     device: DeviceInfo,
