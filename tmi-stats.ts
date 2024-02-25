@@ -78,16 +78,28 @@ async function watch(opts: GlobalOptions) {
     using db = DB.openOrCreate(opts.db)
     while (true) {
         try {
-            console.log(new Date())
+            console.log(colors.yellow(new Date().toLocaleTimeString()))
             const data = await client.getData()
             db.saveSignal(data.signal)
             show(data)
         } catch (e: unknown) {
-            console.error(e)
+            if (is_error(e)) {
+                console.warn(e.toString())
+            } else {
+                console.warn(e)
+            }
         }
 
         await delay(5000)
     }
+}
+
+function is_error(e: unknown): e is Error {
+    return (
+        typeof e == "object"
+        && e != null
+        && typeof e.toString == "function"
+    )
 }
 
 function show(data: tmo.Stats) {
