@@ -4,6 +4,8 @@
  * @module
  */
 
+import { equal } from "https://deno.land/std@0.218.2/assert/equal.ts"
+import { delay } from "../../deps/std/async.ts";
 import { z } from "../../deps/zod.ts";
 
 /**
@@ -21,6 +23,8 @@ export class Client {
     readonly host: string;
     #getUrl: string;
 
+    #lastFetch: {ts: number, data: Stats}|null = null
+
     constructor(args: ClientArgs) {
         this.host = args.host
         this.#getUrl = `http://${this.host}${DEFAULT_CONFIG.requestPath}`
@@ -33,10 +37,69 @@ export class Client {
         return json
     }
 
-    async getData(): Promise<Stats> {
-        const json = await this.getRawJSON()
-        return Stats.parse(json)
+    async #getStats(): Promise<Stats> {
+        const maxTries = 3;
+        for (let x = 1; x <= maxTries; x += 1) {
+            try {
+                const json = await this.getRawJSON()
+                return Stats.parse(json)
+            } catch (e: unknown) {
+                if (x < maxTries) {
+                    // Silently retry:
+                    await delay(100)
+                    continue
+                }
+                throw e
+            }
+        }
+        throw new Error("Shouldn't ever get here.")
     }
+
+    /**
+     * Get the next set of data from the router.
+     * 
+     * It seems like the router only ever updates this every 10sec, so
+     * we'll retry until we see the data has changed, or 10sec has passed.
+     */
+    async getData(): Promise<Stats> {
+        const delayMs = 500
+        const maxWaitMs = 10_000
+
+        // Wait until at least this time to start looking for new data.
+        // shorter than maxWaitMs to allow us to catch up to clock drift,
+        // and see new changes ASAP w/o too many queries.
+        const minWaitMs = 9_000
+
+        const prev = this.#lastFetch
+        while (true) {
+            const elapsedMs = Date.now() - (prev?.ts ?? 0)
+            if (elapsedMs < minWaitMs) {
+                await delay(minWaitMs - elapsedMs)
+                continue
+            }
+            const newData = await this.#getStats()
+            if (
+                elapsedMs > maxWaitMs
+                || prev == null 
+                || !sameData(newData, prev.data)
+            )
+            {
+                this.#lastFetch = {
+                    ts: Date.now(),
+                    data: newData
+                }
+                return newData
+            }
+            await delay(delayMs)
+        } 
+    }
+}
+
+function sameData(a: Stats, b: Stats): boolean {
+    return (
+           equal(a.signal["4g"], b.signal["4g"]) 
+        && equal(a.signal["5g"], b.signal["5g"])
+    )
 }
 
 type ClientArgs = {

@@ -85,9 +85,9 @@ async function watch(opts: GlobalOptions) {
     using db = DB.openOrCreate(opts.db)
     while (true) {
         try {
-            console.log(colors.yellow(new Date().toLocaleTimeString()))
             const data = await client.getData()
             db.saveSignal(data.signal)
+            console.log(colors.yellow(new Date().toLocaleTimeString()))
             show(data)
         } catch (e: unknown) {
             if (is_error(e)) {
@@ -96,8 +96,6 @@ async function watch(opts: GlobalOptions) {
                 console.warn(e)
             }
         }
-
-        await delay(5000)
     }
 }
 
