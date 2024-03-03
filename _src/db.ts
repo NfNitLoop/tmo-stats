@@ -42,8 +42,45 @@ export class DB implements Disposable{
         conn.execute(`CREATE TABLE db_version(version INTEGER);`)
         conn.execute(`INSERT INTO db_version(version) VALUES(${DB.CURRENT_VERSION});`)
         
-        conn.execute(`CREATE TABLE stats(timestamp_ms_utc INTEGER, stats_json TEXT)`)
+        conn.execute(`
+            CREATE TABLE stats2(
+                timestamp_ms_utc INTEGER NOT NULL PRIMARY KEY
+                , stats_json TEXT
+            )
+        `)
 
+        conn.execute(`
+            CREATE VIEW stats_bands AS
+            SELECT
+                timestamp_ms_utc,
+                datetime(timestamp_ms_utc / 1000.0, 'unixepoch', 'localtime') AS local_time,
+                datetime(timestamp_ms_utc / 1000.0, 'unixepoch') AS utc_time,
+                '4g' as g,
+                band_4g.value as band,
+                (stats_json ->> '$.4g.bars') as bars,
+                (stats_json ->> '$.4g.sinr') as sinr,
+                (stats_json ->> '$.4g.rsrq') as rsrq,
+                (stats_json ->> '$.4g.rsrp') as rsrp,
+                (stats_json ->> '$.4g.rssi') as rssi
+            FROM 
+                stats AS s4
+                JOIN json_each(s4.stats_json, '$.4g.bands') AS band_4g
+            UNION 
+            SELECT
+                timestamp_ms_utc,
+                datetime(timestamp_ms_utc / 1000.0, 'unixepoch', 'localtime') AS local_time,
+                datetime(timestamp_ms_utc / 1000.0, 'unixepoch') AS utc_time,
+                '5g' as g,
+                band_5g.value as band,
+                (stats_json ->> '$.5g.bars') as bars,
+                (stats_json ->> '$.5g.sinr') as sinr,
+                (stats_json ->> '$.5g.rsrq') as rsrq,
+                (stats_json ->> '$.5g.rsrp') as rsrp,
+                (stats_json ->> '$.5g.rssi') as rssi
+            FROM 
+                stats AS s5
+                JOIN json_each(s5.stats_json, '$.5g.bands') AS band_5g
+        `)
     }
 
     saveSignal(stats: gw.SignalMap) {
@@ -51,6 +88,30 @@ export class DB implements Disposable{
             ts: Date.now(),
             json: JSON.stringify(stats)
         })
+    }
+
+    async getStats(args: GetStatsArgs): Promise<StatsRow[]> {
+        throw new Error("TODO")
+    }
+
+    getLastStats(count: number): StatsRow[] {
+        const rows = this.#conn.queryEntries<StatsRow>(
+            `
+                SELECT 
+                    timestamp_ms_utc AS ts
+                    , g 
+                    , bars
+                    , sinr
+                    , rsrq
+                    , rsrp
+                    , rssi
+                FROM stats_bands
+                ORDER BY timestamp_ms_utc DESC
+                LIMIT :limit
+            `,
+            {limit: count}
+        )
+        return rows
     }
 
     saveNote(note: string) {
@@ -135,4 +196,23 @@ export class DB implements Disposable{
     [Symbol.dispose](): void {
         this.close()
     }
+}
+
+export type GetStatsArgs = {
+    // UTC timestamp in ms
+    startAt: number
+    endAt: number
+}
+
+export type StatsRow = {
+    // UTC ms
+    ts: number
+
+    g: "4g"|"5g"
+
+    bars: number
+    sinr: number
+    rsrq: number
+    rsrp: number
+    rssi: number
 }
