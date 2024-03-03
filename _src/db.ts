@@ -6,6 +6,9 @@
 import * as sqlite from "../deps/sqlite.ts"
 import { DisposableStack } from "../deps/dispose.ts"
 import * as gw from "./tmobile-gateway/tmobile-gateway.ts"
+import {default as od} from "https://deno.land/x/outdent@v0.8.0/mod.ts";
+import * as st from "./test_speed/ookla.ts"
+
 
 export class DB implements Disposable{
     static readonly CURRENT_VERSION = 1
@@ -42,14 +45,14 @@ export class DB implements Disposable{
         conn.execute(`CREATE TABLE db_version(version INTEGER);`)
         conn.execute(`INSERT INTO db_version(version) VALUES(${DB.CURRENT_VERSION});`)
         
-        conn.execute(`
+        conn.execute(od`
             CREATE TABLE stats2(
                 timestamp_ms_utc INTEGER NOT NULL PRIMARY KEY
                 , stats_json TEXT
             )
         `)
 
-        conn.execute(`
+        conn.execute(od`
             CREATE VIEW stats_bands AS
             SELECT
                 timestamp_ms_utc,
@@ -81,6 +84,16 @@ export class DB implements Disposable{
                 stats AS s5
                 JOIN json_each(s5.stats_json, '$.5g.bands') AS band_5g
         `)
+
+        conn.execute(od`
+            CREATE TABLE speedtest (
+                started_ms_utc INTEGER NOT NULL PRIMARY KEY,
+                finished_ms_utc INTEGER NOT NULL,
+                data_json TEXT NOT NULL,
+                upload INTEGER NOT NULL, -- bandwidth in bytes per second
+                download INTEGER NOT NULL -- bandwidth in bytes per second
+            );
+        `)
     }
 
     saveSignal(stats: gw.SignalMap) {
@@ -90,7 +103,25 @@ export class DB implements Disposable{
         })
     }
 
-    async getStats(args: GetStatsArgs): Promise<StatsRow[]> {
+    saveSpeedTest(args: SaveSpeedTestArgs) {
+        const {started, finished, data} = args
+        this.#conn.query(
+            od`
+                INSERT INTO speedtest(
+                    started_ms_utc, finished_ms_utc, data_json, upload, download
+                ) VALUES(:started, :finished, json(:json), :upload, :download)
+            `, 
+            {
+                started, finished,
+                json: JSON.stringify(data),
+                upload: data.upload.bandwidth,
+                download: data.download.bandwidth,
+            }
+        )
+
+    }
+
+    getStats(args: GetStatsArgs): Promise<StatsRow[]> {
         throw new Error("TODO")
     }
 
@@ -215,4 +246,10 @@ export type StatsRow = {
     rsrq: number
     rsrp: number
     rssi: number
+}
+
+export type SaveSpeedTestArgs = {
+    data: st.TestResult,
+    started: number,
+    finished: number,
 }

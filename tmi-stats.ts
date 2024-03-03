@@ -2,6 +2,7 @@
 
 import * as tmo from "./_src/tmobile-gateway/tmobile-gateway.ts"
 import { DB } from "./_src/db.ts"
+import * as speedtest from "./_src/test_speed/ookla.ts"
 import { Command } from "./deps/cliffy/command.ts"
 import { delay } from "./deps/std/async.ts"
 import { Table } from "./deps/cliffy/table.ts"
@@ -54,6 +55,12 @@ async function parse_args(args: string[]) {
     )
 
     cmd.command(db.getName(), db)
+
+    const speedtest = new Command<GlobalOptions>()
+        .name("speedtest")
+        .description("Run a bandwidth speed test, show & record results")
+        .action(cmdSpeedtest)
+    cmd.command(speedtest.getName(), speedtest)
 
     await cmd.parse(args)
 }
@@ -222,9 +229,38 @@ function rows(data: tmo.Stats): Row[] {
 }
 
 function db_check(opts: GlobalOptions) {
-    const db = DB.openOrCreate(opts.db)
+    using db = DB.openOrCreate(opts.db)
     db.check()
     console.log("👍 OK")
+}
+
+async function cmdSpeedtest(opts: GlobalOptions) {
+    using db = DB.openOrCreate(opts.db)
+
+    console.log("Running speed test ...")
+    const started = Date.now()
+    const results = await speedtest.run()
+    const finished = Date.now()
+    console.log(results)
+
+    console.log(`download: ${speed(results.download.bandwidth)}`)
+    console.log(`upload:   ${speed(results.upload.bandwidth)}`)
+    console.log(`ping(ms): ${results.ping.latency}`)
+
+    db.saveSpeedTest({started, finished, data: results})
+}
+
+/** Human-readable bandwidth speeds */
+function speed(bytes_per_second: number): string {
+    let value = bytes_per_second * 8 // to bits!
+
+    const units = ["bps", "Kbps", "Mbps", "Gbps"]
+    while (units.length > 1 && value > 1000) {
+        value = value / 1000
+        units.shift()
+    }
+
+    return `${value.toPrecision(3)} ${units[0]}`
 }
 
 

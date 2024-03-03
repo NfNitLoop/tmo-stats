@@ -89,7 +89,13 @@ export async function run(): Promise<TestResult> {
         const err = decoder.decode(result.stderr)
         throw new Error(`Error running "speedtest": ${out} ${err}`)
     }
-    const parsed = TestResult.parse(JSON.parse(out))
+    let parsed;
+    try {
+        parsed = TestResult.parse(JSON.parse(out))
+    } catch (e: unknown) {
+        console.error("Error parsing output: ", out)
+        throw e
+    }
     return parsed
 }
 
