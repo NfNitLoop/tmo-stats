@@ -21,9 +21,8 @@ export function graph(rows: StatsRow[]): Deno.jupyter.Displayable {
             point: true,
         },
         encoding: {
-            x: {field: "ts", type: "temporal"},
-            y: {field: "bars"},
-            y2: {field: "g", type: "nominal"},
+            x: {field: "ts", type: "temporal", bin: {maxbins: 50, nice: true}},
+            y: {field: "sinr", aggregate: "average", title: "Signal/Noise Ratio"},
             color: {field: "g", type: "nominal"},
             // color: {
             //     field: 

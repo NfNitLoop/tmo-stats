@@ -46,7 +46,7 @@ export class DB implements Disposable{
         conn.execute(`INSERT INTO db_version(version) VALUES(${DB.CURRENT_VERSION});`)
         
         conn.execute(od`
-            CREATE TABLE stats2(
+            CREATE TABLE stats(
                 timestamp_ms_utc INTEGER NOT NULL PRIMARY KEY
                 , stats_json TEXT
             )
