@@ -3,8 +3,8 @@
 import * as tmo from "./_src/tmobile-gateway/tmobile-gateway.ts"
 import { DB } from "./_src/db.ts"
 import * as speedtest from "./_src/test_speed/ookla.ts"
+import od from "./deps/outdent.ts"
 import { Command } from "./deps/cliffy/command.ts"
-import { delay } from "./deps/std/async.ts"
 import { Table } from "./deps/cliffy/table.ts"
 import { colors } from "./deps/cliffy/colors.ts"
 
@@ -61,6 +61,19 @@ async function parse_args(args: string[]) {
         .description("Run a bandwidth speed test, show & record results")
         .action(cmdSpeedtest)
     cmd.command(speedtest.getName(), speedtest)
+
+    const note = new Command<GlobalOptions>()
+        .name("note")
+        .description(od`
+            Add a timestamped note to the data.
+            Useful to note where you've pointed your antenna or other variables you've changed during testing.
+            `)
+        .option("--start", "This note marks the start of a span of time.", {
+            default: false,
+        })
+        .arguments("<note:string>")
+        .action(cmdNote)
+    cmd.command(note.getName(), note)
 
     await cmd.parse(args)
 }
@@ -261,6 +274,19 @@ function speed(bytes_per_second: number): string {
     return `${value.toPrecision(3)} ${units[0]}`
 }
 
+function cmdNote(opts: GlobalOptions & NoteOptions, note: string) {
+    using db = DB.open(opts.db)
+
+    db.saveNote({
+        note,
+        type: opts.start ? "span-start" : "note"
+    })
+}
+
+type NoteOptions = {
+    // Does this note mark the start of a span?
+    start: boolean
+}
 
 if (import.meta.main) {
     main()

@@ -6,7 +6,7 @@
 import * as sqlite from "../deps/sqlite.ts"
 import { DisposableStack } from "../deps/dispose.ts"
 import * as gw from "./tmobile-gateway/tmobile-gateway.ts"
-import {default as od} from "https://deno.land/x/outdent@v0.8.0/mod.ts";
+import od from "../deps/outdent.ts"
 import * as st from "./test_speed/ookla.ts"
 
 
@@ -15,14 +15,19 @@ export class DB implements Disposable{
 
     #conn: sqlite.DB
 
-    private constructor(readonly filePath: string) {
-        this.#conn = new sqlite.DB(filePath)
+    private constructor(readonly filePath: string, mode: sqlite.SqliteOptions["mode"]) {
+        this.#conn = new sqlite.DB(filePath, {mode})
     }
 
+    // TODO: Deprecate and prefer explicit create.
     static openOrCreate(filePath: string): DB {
-        const db = new DB(filePath)
+        const db = new DB(filePath, "create")
         db.init()
         return db
+    }
+
+    static open(filePath: string): DB {
+        return new DB(filePath, "write")
     }
 
     /**
@@ -94,6 +99,41 @@ export class DB implements Disposable{
                 download INTEGER NOT NULL -- bandwidth in bytes per second
             );
         `)
+
+        conn.execute(od`
+            CREATE TABLE note (
+                timestamp_ms_utc INTEGER NOT NULL PRIMARY KEY,
+                type TEXT NOT NULL, -- "note" or "span-start"
+                note TEXT NOT NULL
+            )
+        `)
+
+        conn.execute(od`
+            DROP VIEW IF EXISTS note_view;
+            CREATE VIEW note_view AS
+            WITH n AS (
+                SELECT
+                    timestamp_ms_utc,
+                    datetime(timestamp_ms_utc / 1000.0, 'unixepoch', 'localtime') AS local_time,
+                    datetime(timestamp_ms_utc / 1000.0, 'unixepoch') AS utc_time,
+                    type,
+                    note,
+                    (
+                        SELECT MIN(n2.timestamp_ms_utc)
+                        FROM note AS n2 
+                        WHERE n1.type = 'span-start'
+                        AND n2.type = 'span-start'
+                        AND n2.timestamp_ms_utc > n1.timestamp_ms_utc
+                    ) AS end_ts
+                FROM note AS n1
+            )
+            SELECT
+                n.*,
+                datetime(end_ts / 1000.0, 'unixepoch', 'localtime') AS end_local_time,
+                datetime(end_ts / 1000.0, 'unixepoch') AS end_utc_time
+            FROM n
+            ORDER BY timestamp_ms_utc;
+        `)
     }
 
     saveSignal(stats: gw.SignalMap) {
@@ -145,8 +185,30 @@ export class DB implements Disposable{
         return rows
     }
 
-    saveNote(note: string) {
-        throw new Error("TODO")
+    saveNote(note: NoteArgs) {
+        this.#conn.query(
+            od`
+                INSERT INTO note(timestamp_ms_utc, type, note) VALUES (:ts, :type, :note)
+            `,
+            {
+                ts: Date.now(),
+                ...note
+            }
+        )
+    }
+
+    getNotes(): Note[] {
+        return this.#conn.queryEntries(
+            od`
+                SELECT
+                    timestamp_ms_utc AS timestampMsUtc,
+                    end_ts AS endTs,
+                    type,
+                    note
+                FROM note_view
+                ORDER BY timestamp_ms_utc,
+            `
+        )
     }
 
     #version(): number|null {
@@ -253,3 +315,14 @@ export type SaveSpeedTestArgs = {
     started: number,
     finished: number,
 }
+
+export type Note = {
+    timestampMsUtc: number,
+    type: "note" | "span-start",
+    note: string,
+
+    /** If this note is a span, when does it end? */
+    endTs?: number
+}
+
+export type NoteArgs = Pick<Note, "type" | "note">
