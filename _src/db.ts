@@ -161,8 +161,50 @@ export class DB implements Disposable{
 
     }
 
-    getStats(args: GetStatsArgs): Promise<StatsRow[]> {
-        throw new Error("TODO")
+    getSpeedTests(args: TimeSpan): SpeedTest[] {
+        return this.#conn.queryEntries(
+            od`
+                SELECT
+                    started_ms_utc AS start,
+                    finished_ms_utc AS end,
+                    upload,
+                    download
+                FROM speedtest
+                WHERE
+                    started_ms_utc >= :start
+                    AND finished_ms_utc < :end
+                ORDER BY started_ms_utc
+            `,
+            {
+                start: args.startAt,
+                end: args.endAt
+            }
+        )
+    }
+
+    getStats(args: GetStatsArgs): StatsRow[] {
+        return this.#conn.queryEntries<StatsRow>(
+            `
+                SELECT 
+                    timestamp_ms_utc AS ts
+                    , g
+                    , band
+                    , bars
+                    , sinr
+                    , rsrq
+                    , rsrp
+                    , rssi
+                FROM stats_bands
+                WHERE
+                    timestamp_ms_utc >= :start
+                    AND timestamp_ms_utc < :end
+                ORDER BY timestamp_ms_utc DESC
+            `,
+            {
+                start: args.startAt,
+                end: args.endAt
+            }
+        )
     }
 
     getLastStats(count: number): StatsRow[] {
@@ -170,7 +212,8 @@ export class DB implements Disposable{
             `
                 SELECT 
                     timestamp_ms_utc AS ts
-                    , g 
+                    , g
+                    , band
                     , bars
                     , sinr
                     , rsrq
@@ -197,7 +240,7 @@ export class DB implements Disposable{
         )
     }
 
-    getNotes(): Note[] {
+    getNotes(args: GetSpansArgs): Note[] {
         return this.#conn.queryEntries(
             od`
                 SELECT
@@ -206,8 +249,12 @@ export class DB implements Disposable{
                     type,
                     note
                 FROM note_view
-                ORDER BY timestamp_ms_utc,
-            `
+                WHERE timestamp_ms_utc >= :ts
+                ORDER BY timestamp_ms_utc
+            `,
+            {
+                ts: args.sinceMsUtc
+            }
         )
     }
 
@@ -282,6 +329,36 @@ export class DB implements Disposable{
         console.log("Found version", ver)
     }
 
+    /**
+     * Get stats for spans marked in the note table.
+     * 
+     * This lets you easily compare different configurations, like redirecting your antenna.
+     */
+    getSpans(args: GetSpansArgs): SpanData[] {
+        const maxWindowMs = 10 * 60 * 1000 // 10 minutes
+
+        const allNotes = this.getNotes(args)
+        return allNotes.filter(n => n.type == "span-start").map(span => {
+            const start = span.timestampMsUtc;
+            const end = span.endTs;
+            const effectiveEnd = Math.min(end ?? Date.now(), start + maxWindowMs)
+            const timeSpan = {startAt: start, endAt: effectiveEnd}
+            return {
+                start,
+                end,
+                effectiveEnd,
+                note: span.note,
+                notes: allNotes.filter(n => 
+                    n.type == "note"
+                    && n.timestampMsUtc >= start
+                    && n.timestampMsUtc < effectiveEnd
+                ),
+                stats: this.getStats(timeSpan),
+                speedTests: this.getSpeedTests(timeSpan)
+            } as SpanData
+        })        
+    }
+
     close() {
         this.#conn.close()
     }
@@ -291,9 +368,36 @@ export class DB implements Disposable{
     }
 }
 
-export type GetStatsArgs = {
-    // UTC timestamp in ms
+export type SpanData = {
+    /** ms utc */
+    start: number
+    /** ms utc */
+    end?: number
+
+    /** We may truncate a span to a shorter time period than its nominal "end" */
+    effectiveEnd: number
+
+    stats: StatsRow[]
+
+    /** A note about what's being tested in this span. */
+    note: string
+
+    /** Other notes in this span. */
+    notes: Note[]
+
+    speedTests: SpeedTest[]
+}
+
+export type GetSpansArgs = {
+    sinceMsUtc: number
+}
+
+export type GetStatsArgs = TimeSpan
+
+export type TimeSpan = {
+    /** UTC timestamp in ms, inclusive */
     startAt: number
+    /** UTC timestamp in ms, exclusive */
     endAt: number
 }
 
@@ -302,6 +406,9 @@ export type StatsRow = {
     ts: number
 
     g: "4g"|"5g"
+
+    /** ex: "n41" */
+    band: string 
 
     bars: number
     sinr: number
@@ -323,6 +430,18 @@ export type Note = {
 
     /** If this note is a span, when does it end? */
     endTs?: number
+}
+
+export type SpeedTest = {
+    /** Timestamp, ms, utc */
+    start: number
+    /** Timestamp, ms, utc */
+    end: number
+
+    /** Bytes per second */
+    upload: number
+    /** Bytes per second */
+    download: number
 }
 
 export type NoteArgs = Pick<Note, "type" | "note">

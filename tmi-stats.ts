@@ -7,6 +7,7 @@ import od from "./deps/outdent.ts"
 import { Command } from "./deps/cliffy/command.ts"
 import { Table } from "./deps/cliffy/table.ts"
 import { colors } from "./deps/cliffy/colors.ts"
+import { speed } from "./_src/test_speed/display.ts";
 
 async function main() {
     await parse_args(Deno.args)
@@ -240,13 +241,13 @@ function rows(data: tmo.Stats): Row[] {
 }
 
 function db_check(opts: GlobalOptions) {
-    using db = DB.openOrCreate(opts.db)
+    using db = DB.open(opts.db)
     db.check()
     console.log("👍 OK")
 }
 
 async function cmdSpeedtest(opts: GlobalOptions) {
-    using db = DB.openOrCreate(opts.db)
+    using db = DB.open(opts.db)
 
     console.log("Running speed test ...")
     const started = Date.now()
@@ -261,18 +262,7 @@ async function cmdSpeedtest(opts: GlobalOptions) {
     db.saveSpeedTest({started, finished, data: results})
 }
 
-/** Human-readable bandwidth speeds */
-function speed(bytes_per_second: number): string {
-    let value = bytes_per_second * 8 // to bits!
 
-    const units = ["bps", "Kbps", "Mbps", "Gbps"]
-    while (units.length > 1 && value > 1000) {
-        value = value / 1000
-        units.shift()
-    }
-
-    return `${value.toPrecision(3)} ${units[0]}`
-}
 
 function cmdNote(opts: GlobalOptions & NoteOptions, note: string) {
     using db = DB.open(opts.db)
