@@ -1,0 +1,5 @@
+{
+    "tasks": {
+        "install": "deno install --global --force -RWNE tmi-stats.ts --name tmi --config deno.jsonc"
+    }
+}
